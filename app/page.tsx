@@ -157,6 +157,7 @@ export default function Home() {
       </div>
 
       {/* Hidden file input */}
+      {/* @ts-ignore -- JSX.IntrinsicElements error in some TS configs; suppress for file input */}
       <input
         ref={fileInputRef}
         type="file"
