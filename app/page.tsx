@@ -18,6 +18,7 @@ export default function Home() {
   const [stage, setStage]     = useState<Stage>("camera");
   const [preview, setPreview] = useState<string | null>(null);
   const [file, setFile]       = useState<File | null>(null);
+  const fileRef = useRef<File | null>(null);
   const [error, setError]     = useState("");
   const [flash, setFlash]     = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -35,24 +36,28 @@ export default function Home() {
     const f = e.target.files?.[0];
     if (!f) return;
     setError("");
-    setFile(f);
+    // Read the data URL first, then store file and clear input
     const reader = new FileReader();
     reader.onload = ev => {
+      fileRef.current = f;
+      setFile(f);
       setPreview(ev.target?.result as string);
       setStage("preview");
+      // Clear input AFTER we've captured everything we need
+      e.target.value = "";
     };
     reader.readAsDataURL(f);
-    e.target.value = "";
   }, []);
 
   /* Upload */
   const onSend = async () => {
-    if (!file) return;
+    const currentFile = fileRef.current || file;
+    if (!currentFile) return;
     setStage("uploading");
     setError("");
     try {
       const fd = new FormData();
-      fd.append("file", file);
+      fd.append("file", currentFile);
       const res = await fetch("/api/upload", { method: "POST", body: fd });
       if (!res.ok) throw new Error((await res.json()).error || "Upload failed");
 
@@ -63,6 +68,7 @@ export default function Home() {
       setTimeout(() => setFlash(false), 600);
       setPreview(null);
       setFile(null);
+      fileRef.current = null;
       setStage(newUsed >= MAX_PHOTOS ? "done" : "success");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Something went wrong");
@@ -70,7 +76,7 @@ export default function Home() {
     }
   };
 
-  const onRetake = () => { setPreview(null); setFile(null); setStage("camera"); setError(""); };
+  const onRetake = () => { setPreview(null); setFile(null); fileRef.current = null; setStage("camera"); setError(""); };
   const onAnother = () => { setStage("camera"); setError(""); };
 
   return (
@@ -84,7 +90,7 @@ export default function Home() {
         type="file"
         accept="image/*"
         onChange={onPick}
-        style={{ position: "absolute", width: 0, height: 0, opacity: 0, pointerEvents: "none" }}
+        style={{ position: "fixed", bottom: 0, left: 0, width: "1px", height: "1px", opacity: 0 }}
         tabIndex={-1}
       />
 
