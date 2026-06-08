@@ -18,7 +18,6 @@ export default function Home() {
   const [stage, setStage]     = useState<Stage>("camera");
   const [preview, setPreview] = useState<string | null>(null);
   const [file, setFile]       = useState<File | null>(null);
-  const fileRef = useRef<File | null>(null);
   const [error, setError]     = useState("");
   const [flash, setFlash]     = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -36,28 +35,24 @@ export default function Home() {
     const f = e.target.files?.[0];
     if (!f) return;
     setError("");
-    // Read the data URL first, then store file and clear input
+    setFile(f);
     const reader = new FileReader();
     reader.onload = ev => {
-      fileRef.current = f;
-      setFile(f);
       setPreview(ev.target?.result as string);
       setStage("preview");
-      // Clear input AFTER we've captured everything we need
-      e.target.value = "";
     };
     reader.readAsDataURL(f);
+    e.target.value = "";
   }, []);
 
   /* Upload */
   const onSend = async () => {
-    const currentFile = fileRef.current || file;
-    if (!currentFile) return;
+    if (!file) return;
     setStage("uploading");
     setError("");
     try {
       const fd = new FormData();
-      fd.append("file", currentFile);
+      fd.append("file", file);
       const res = await fetch("/api/upload", { method: "POST", body: fd });
       if (!res.ok) throw new Error((await res.json()).error || "Upload failed");
 
@@ -68,7 +63,6 @@ export default function Home() {
       setTimeout(() => setFlash(false), 600);
       setPreview(null);
       setFile(null);
-      fileRef.current = null;
       setStage(newUsed >= MAX_PHOTOS ? "done" : "success");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Something went wrong");
@@ -76,7 +70,7 @@ export default function Home() {
     }
   };
 
-  const onRetake = () => { setPreview(null); setFile(null); fileRef.current = null; setStage("camera"); setError(""); };
+  const onRetake = () => { setPreview(null); setFile(null); setStage("camera"); setError(""); };
   const onAnother = () => { setStage("camera"); setError(""); };
 
   return (
@@ -90,8 +84,7 @@ export default function Home() {
         type="file"
         accept="image/*"
         onChange={onPick}
-        style={{ position: "fixed", bottom: 0, left: 0, width: "1px", height: "1px", opacity: 0 }}
-        tabIndex={-1}
+        style={{ display: "none" }}
       />
 
       {stage === "camera"   && <CameraScreen   used={used} left={left} error={error} />}
@@ -165,16 +158,32 @@ function CameraScreen({ used, left, error }: { used: number; left: number; error
 
       {/* Shutter — label directly wired to input, no JS needed */}
       <div className="animate-fade-3" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, paddingBottom: "max(env(safe-area-inset-bottom, 0px) + 40px, 52px)" }}>
-        <div className="shutter-wrap">
+        <div className="shutter-wrap" style={{ position: "relative" }}>
           <div className="shutter-ring" />
-          <label htmlFor="photo-input" className="shutter-btn" aria-label="Take or choose a photo">
-            <div className="shutter-inner">
+          <div className="shutter-btn" style={{ position: "relative", overflow: "hidden" }}>
+            {/* Input sits ON TOP of the button, fully covering it, invisible */}
+            <input
+              type="file"
+              accept="image/*"
+              onChange={onPick}
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                opacity: 0,
+                cursor: "pointer",
+                fontSize: 0,
+                zIndex: 10,
+              }}
+            />
+            <div className="shutter-inner" style={{ pointerEvents: "none" }}>
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#F5F0E8" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
                 <circle cx="12" cy="13" r="4"/>
               </svg>
             </div>
-          </label>
+          </div>
         </div>
         <p style={{ fontSize: 11, letterSpacing: "0.15em", textTransform: "uppercase", color: "rgba(245,240,232,0.2)" }}>
           tap to capture
