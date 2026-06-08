@@ -1,159 +1,170 @@
-@import url('https://fonts.googleapis.com/css2?family=Pacifico&family=DM+Sans:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,400&family=Plus+Jakarta+Sans:wght@300;400;500;600&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-* { box-sizing: border-box; margin: 0; padding: 0; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-:root {
-  --pink: #FF6B9D;
-  --yellow: #FFD93D;
-  --mint: #6BCB77;
-  --sky: #4FC3F7;
-  --coral: #FF8B64;
-  --purple: #C084FC;
-  --dark: #1A1025;
-  --card: #231830;
-  --white: #FFF8F0;
+html {
+  height: 100%;
+  height: -webkit-fill-available;
 }
 
-html, body {
-  height: 100%;
-  overflow-x: hidden;
-  background: var(--dark);
-  color: var(--white);
-  font-family: 'DM Sans', sans-serif;
+body {
+  min-height: 100vh;
+  min-height: -webkit-fill-available;
+  background: #0D0D0D;
+  color: #F5F0E8;
+  font-family: 'Plus Jakarta Sans', sans-serif;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
+  overflow-x: hidden;
 }
 
-.font-fun { font-family: 'Pacifico', cursive; }
+.serif { font-family: 'Playfair Display', Georgia, serif; }
 
-/* Confetti dots background */
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background-image:
-    radial-gradient(circle at 15% 20%, rgba(255,107,157,0.12) 0%, transparent 50%),
-    radial-gradient(circle at 85% 80%, rgba(197,132,252,0.12) 0%, transparent 50%),
-    radial-gradient(circle at 50% 50%, rgba(79,195,247,0.06) 0%, transparent 70%);
-  pointer-events: none;
-  z-index: 0;
+/* ── Animations ── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
-
-@keyframes float {
-  0%, 100% { transform: translateY(0px) rotate(0deg); }
-  33% { transform: translateY(-8px) rotate(2deg); }
-  66% { transform: translateY(-4px) rotate(-1deg); }
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 1; transform: scale(1); }
 }
-
-@keyframes pop {
-  0% { transform: scale(0.8); opacity: 0; }
-  70% { transform: scale(1.05); }
-  100% { transform: scale(1); opacity: 1; }
-}
-
-@keyframes shake {
-  0%, 100% { transform: rotate(0deg); }
-  20% { transform: rotate(-5deg); }
-  40% { transform: rotate(5deg); }
-  60% { transform: rotate(-3deg); }
-  80% { transform: rotate(3deg); }
-}
-
-@keyframes flash {
-  0% { opacity: 0; }
-  10% { opacity: 1; }
-  30% { opacity: 0.8; }
+@keyframes flashWhite {
+  0%   { opacity: 0; }
+  5%   { opacity: 1; }
   100% { opacity: 0; }
 }
-
-@keyframes slideUp {
-  from { transform: translateY(40px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
-}
-
-@keyframes pulse-ring {
-  0% { transform: scale(1); opacity: 0.8; }
-  100% { transform: scale(1.4); opacity: 0; }
-}
-
-@keyframes spin-slow {
-  from { transform: rotate(0deg); }
+@keyframes spin {
   to { transform: rotate(360deg); }
 }
-
-@keyframes ticker {
-  0% { transform: translateX(0); }
-  100% { transform: translateX(-50%); }
+@keyframes pulseRing {
+  0%   { transform: scale(1);   opacity: 0.6; }
+  100% { transform: scale(1.5); opacity: 0; }
+}
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-.float { animation: float 4s ease-in-out infinite; }
-.float-delay { animation: float 4s ease-in-out 1.5s infinite; }
-.pop { animation: pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
-.slide-up { animation: slideUp 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
-.slide-up-1 { animation: slideUp 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.1s both; }
-.slide-up-2 { animation: slideUp 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.2s both; }
-.slide-up-3 { animation: slideUp 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.3s both; }
+.animate-fade    { animation: fadeIn  0.45s cubic-bezier(.22,1,.36,1) both; }
+.animate-fade-1  { animation: fadeIn  0.45s cubic-bezier(.22,1,.36,1) 0.08s both; }
+.animate-fade-2  { animation: fadeIn  0.45s cubic-bezier(.22,1,.36,1) 0.16s both; }
+.animate-fade-3  { animation: fadeIn  0.45s cubic-bezier(.22,1,.36,1) 0.24s both; }
+.animate-scale   { animation: scaleIn 0.4s  cubic-bezier(.34,1.56,.64,1) both; }
+.animate-slide   { animation: slideUp 0.5s  cubic-bezier(.22,1,.36,1) both; }
 
-.camera-btn {
+.flash-overlay {
+  position: fixed; inset: 0; z-index: 9999;
+  background: white; pointer-events: none;
+  animation: flashWhite 0.55s ease-out forwards;
+}
+
+/* ── Shutter button ── */
+.shutter-wrap {
   position: relative;
-  width: 90px;
-  height: 90px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--pink), var(--coral));
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+.shutter-ring {
+  position: absolute;
+  inset: -10px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.25);
+  animation: pulseRing 2.4s ease-out infinite;
+  pointer-events: none;
+}
+.shutter-btn {
+  position: relative;
+  width: 80px; height: 80px;
+  border-radius: 50%;
+  background: #fff;
+  border: none;
   cursor: pointer;
-  box-shadow: 0 0 0 6px rgba(255,107,157,0.2), 0 8px 32px rgba(255,107,157,0.4);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 0 0 5px rgba(255,255,255,0.15), 0 8px 40px rgba(255,255,255,0.12);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
-
-.camera-btn:active {
-  transform: scale(0.92);
-  box-shadow: 0 0 0 4px rgba(255,107,157,0.3), 0 4px 16px rgba(255,107,157,0.4);
+.shutter-btn:active {
+  transform: scale(0.9);
+  box-shadow: 0 0 0 3px rgba(255,255,255,0.1), 0 4px 20px rgba(255,255,255,0.08);
+}
+.shutter-inner {
+  width: 62px; height: 62px;
+  border-radius: 50%;
+  background: #0D0D0D;
+  display: flex; align-items: center; justify-content: center;
 }
 
-.camera-btn::after {
-  content: '';
-  position: absolute;
-  inset: -8px;
-  border-radius: 50%;
-  border: 2px solid rgba(255,107,157,0.4);
-  animation: pulse-ring 2s ease-out infinite;
-}
-
-.film-dot {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  border: 2.5px solid;
+/* ── Film strip ── */
+.film-strip {
   display: flex;
+  gap: 6px;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
-  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.film-frame-dot {
+  width: 8px; height: 8px;
+  border-radius: 2px;
+  transition: all 0.3s cubic-bezier(.34,1.56,.64,1);
 }
 
-.ticker-wrap {
-  overflow: hidden;
-  white-space: nowrap;
+/* ── Pill button ── */
+.btn-primary {
+  width: 100%;
+  padding: 18px 24px;
+  border-radius: 100px;
+  background: #F5F0E8;
+  color: #0D0D0D;
+  font-weight: 600;
+  font-size: 16px;
+  letter-spacing: -0.01em;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.12s ease, opacity 0.12s ease;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
-.ticker-inner {
-  display: inline-block;
-  animation: ticker 20s linear infinite;
+.btn-primary:active { transform: scale(0.97); opacity: 0.85; }
+
+.btn-ghost {
+  width: 100%;
+  padding: 16px 24px;
+  border-radius: 100px;
+  background: transparent;
+  color: rgba(245,240,232,0.5);
+  font-weight: 500;
+  font-size: 15px;
+  border: 1.5px solid rgba(245,240,232,0.12);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.btn-ghost:active { border-color: rgba(245,240,232,0.3); color: rgba(245,240,232,0.7); }
+
+/* ── Card ── */
+.card {
+  background: #1A1A1A;
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 20px;
 }
 
-.flash-overlay {
-  position: fixed;
-  inset: 0;
-  background: white;
-  z-index: 999;
-  pointer-events: none;
-  animation: flash 0.6s ease-out forwards;
+/* ── Spinner ── */
+.spinner {
+  width: 36px; height: 36px;
+  border: 2.5px solid rgba(255,255,255,0.1);
+  border-top-color: #F5F0E8;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
 }

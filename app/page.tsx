@@ -4,391 +4,275 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import Link from "next/link";
 
 const MAX_PHOTOS = 10;
-const STORAGE_KEY = "wedding_photos_used_v2";
+const STORAGE_KEY = "weddingcam_v3";
 
-function getPhotosUsed(): number {
+function getUsed(): number {
   if (typeof window === "undefined") return 0;
   return parseInt(localStorage.getItem(STORAGE_KEY) || "0", 10);
 }
 
-type Stage = "welcome" | "camera" | "preview" | "uploading" | "success" | "done";
+type Stage = "camera" | "preview" | "uploading" | "success" | "done";
 
 export default function Home() {
-  const [photosUsed, setPhotosUsedState] = useState(0);
-  const [stage, setStage] = useState<Stage>("welcome");
+  const [used, setUsed]       = useState(0);
+  const [stage, setStage]     = useState<Stage>("camera");
   const [preview, setPreview] = useState<string | null>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [errorMsg, setErrorMsg] = useState("");
-  const [showFlash, setShowFlash] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [file, setFile]       = useState<File | null>(null);
+  const [error, setError]     = useState("");
+  const [flash, setFlash]     = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const used = getPhotosUsed();
-    setPhotosUsedState(used);
-    if (used >= MAX_PHOTOS) setStage("done");
-    else setStage("camera");
+    const n = getUsed();
+    setUsed(n);
+    if (n >= MAX_PHOTOS) setStage("done");
   }, []);
 
-  const photosLeft = MAX_PHOTOS - photosUsed;
+  const left = MAX_PHOTOS - used;
 
-  const triggerCamera = () => {
-    setErrorMsg("");
-    fileInputRef.current?.click();
-  };
-
-  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setErrorMsg("");
-    setSelectedFile(file);
+  /* File picked — show preview */
+  const onPick = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setError("");
+    setFile(f);
     const reader = new FileReader();
-    reader.onload = (ev) => {
+    reader.onload = ev => {
       setPreview(ev.target?.result as string);
       setStage("preview");
     };
-    reader.readAsDataURL(file);
-    // reset so same file can be reselected
+    reader.readAsDataURL(f);
     e.target.value = "";
   }, []);
 
-  const handleUpload = async () => {
-    if (!selectedFile) return;
+  /* Upload */
+  const onSend = async () => {
+    if (!file) return;
     setStage("uploading");
-    setErrorMsg("");
-
+    setError("");
     try {
-      const formData = new FormData();
-      formData.append("file", selectedFile);
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/upload", { method: "POST", body: fd });
+      if (!res.ok) throw new Error((await res.json()).error || "Upload failed");
 
-      const res = await fetch("/api/upload", { method: "POST", body: formData });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Upload failed");
-      }
-
-      const newCount = photosUsed + 1;
-      localStorage.setItem(STORAGE_KEY, String(newCount));
-      setPhotosUsedState(newCount);
-
-      // Flash effect
-      setShowFlash(true);
-      setTimeout(() => setShowFlash(false), 600);
-
-      if (newCount >= MAX_PHOTOS) {
-        setTimeout(() => setStage("done"), 700);
-      } else {
-        setStage("success");
-      }
+      const newUsed = used + 1;
+      localStorage.setItem(STORAGE_KEY, String(newUsed));
+      setUsed(newUsed);
+      setFlash(true);
+      setTimeout(() => setFlash(false), 600);
       setPreview(null);
-      setSelectedFile(null);
+      setFile(null);
+      setStage(newUsed >= MAX_PHOTOS ? "done" : "success");
     } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : "Something went wrong!");
+      setError(err instanceof Error ? err.message : "Something went wrong");
       setStage("preview");
     }
   };
 
-  const handleRetake = () => {
-    setPreview(null);
-    setSelectedFile(null);
-    setStage("camera");
-    setErrorMsg("");
-  };
-
-  const handleNext = () => {
-    setStage("camera");
-    setErrorMsg("");
-  };
+  const onRetake = () => { setPreview(null); setFile(null); setStage("camera"); setError(""); };
+  const onAnother = () => { setStage("camera"); setError(""); };
 
   return (
-    <div className="relative min-h-screen flex flex-col" style={{ position: "relative", zIndex: 1 }}>
-      {showFlash && <div className="flash-overlay" />}
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", position: "relative" }}>
+      {flash && <div className="flash-overlay" />}
 
-      {/* Hidden file input — NO capture attribute for max compatibility */}
+      {/* The input — no capture attr, id wired to labels */}
       <input
-        ref={fileInputRef}
+        id="photo-input"
+        ref={inputRef}
         type="file"
         accept="image/*"
-        className="hidden"
-        style={{ position: "absolute", opacity: 0, width: 0, height: 0 }}
-        onChange={handleFileChange}
+        onChange={onPick}
+        style={{ position: "absolute", width: 0, height: 0, opacity: 0, pointerEvents: "none" }}
+        tabIndex={-1}
       />
 
-      {stage === "welcome" && <WelcomeScreen onStart={() => setStage("camera")} />}
-      {stage === "camera" && (
-        <CameraScreen
-          photosLeft={photosLeft}
-          photosUsed={photosUsed}
-          onCapture={triggerCamera}
-          error={errorMsg}
-        />
-      )}
-      {stage === "preview" && preview && (
-        <PreviewScreen
-          preview={preview}
-          onConfirm={handleUpload}
-          onRetake={handleRetake}
-          photosLeft={photosLeft}
-        />
-      )}
-      {stage === "uploading" && (
-        <UploadingScreen />
-      )}
-      {stage === "success" && (
-        <SuccessScreen
-          photosLeft={photosLeft}
-          onNext={handleNext}
-        />
-      )}
-      {stage === "done" && <DoneScreen />}
+      {stage === "camera"   && <CameraScreen   used={used} left={left} error={error} />}
+      {stage === "preview"  && preview && <PreviewScreen preview={preview} left={left} onSend={onSend} onRetake={onRetake} error={error} />}
+      {stage === "uploading" && <UploadScreen />}
+      {stage === "success"  && <SuccessScreen  left={left} onAnother={onAnother} />}
+      {stage === "done"     && <DoneScreen />}
     </div>
   );
 }
 
-/* ─── WELCOME ─── */
-function WelcomeScreen({ onStart }: { onStart: () => void }) {
+/* ══════════════════════════════════════════
+   CAMERA SCREEN — opens directly on load
+══════════════════════════════════════════ */
+function CameraScreen({ used, left, error }: { used: number; left: number; error: string }) {
+  const low = left <= 3;
+
   return (
-    <div className="flex flex-col items-center justify-between min-h-screen px-6 py-12 text-center">
-      <div />
-      <div className="slide-up">
-        {/* Floating emojis */}
-        <div className="relative mb-8">
-          <span className="text-6xl block float">📸</span>
-          <span className="absolute -top-2 -right-6 text-3xl float-delay">💍</span>
-          <span className="absolute -bottom-2 -left-8 text-2xl float">🌸</span>
-        </div>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "0 24px", minHeight: "100vh" }}>
 
-        <h1 className="font-fun text-4xl mb-2" style={{ color: "var(--pink)" }}>
-          Sara & Ahmed
-        </h1>
-        <p className="text-lg mb-1" style={{ color: "var(--yellow)" }}>are getting married! 🎊</p>
-        <p className="text-sm opacity-60 mb-10">June 14, 2026</p>
-
-        <div
-          className="rounded-2xl p-5 mb-10"
-          style={{ background: "var(--card)", border: "1px solid rgba(255,255,255,0.08)" }}
-        >
-          <p className="text-3xl mb-3">🎞️</p>
-          <p className="font-semibold text-lg mb-2">You get</p>
-          <p className="font-fun text-5xl mb-2" style={{ color: "var(--yellow)" }}>10 shots</p>
-          <p className="opacity-60 text-sm leading-relaxed">
-            Like a disposable camera.<br />Use them wisely. Make them count!
+      {/* Top bar */}
+      <div className="animate-fade" style={{ paddingTop: "28px", paddingBottom: 0, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <p style={{ fontSize: 11, fontWeight: 500, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(245,240,232,0.35)", marginBottom: 2 }}>
+            Sara & Ahmed
+          </p>
+          <p style={{ fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(245,240,232,0.2)" }}>
+            14 June 2026
           </p>
         </div>
+        <Link href="/gallery" style={{ fontSize: 13, color: "rgba(245,240,232,0.4)", textDecoration: "none", fontWeight: 500 }}>
+          Gallery
+        </Link>
       </div>
 
-      <button
-        onClick={onStart}
-        className="slide-up-3 w-full max-w-xs py-5 rounded-2xl font-semibold text-lg text-white"
-        style={{ background: "linear-gradient(135deg, var(--pink), var(--coral))" }}
-      >
-        Let&apos;s Go! 🎉
-      </button>
-    </div>
-  );
-}
-
-/* ─── CAMERA ─── */
-function CameraScreen({
-  photosLeft,
-  photosUsed,
-  onCapture,
-  error,
-}: {
-  photosLeft: number;
-  photosUsed: number;
-  onCapture: () => void;
-  error: string;
-}) {
-  const dots = Array.from({ length: MAX_PHOTOS }, (_, i) => i);
-
-  return (
-    <div className="flex flex-col items-center justify-between min-h-screen px-6 py-10">
-      {/* Top bar */}
-      <div className="w-full slide-up">
-        <div className="flex justify-between items-center mb-6">
-          <Link href="/gallery" className="text-xs opacity-50 tracking-widest uppercase">
-            Gallery →
-          </Link>
-          <span
-            className="font-fun text-base"
-            style={{ color: photosLeft <= 3 ? "var(--coral)" : "var(--yellow)" }}
-          >
-            {photosLeft} left
-          </span>
+      {/* Film strip */}
+      <div className="animate-fade-1" style={{ marginTop: 36, display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+        <div className="film-strip">
+          {Array.from({ length: MAX_PHOTOS }).map((_, i) => (
+            <div
+              key={i}
+              className="film-frame-dot"
+              style={{
+                background: i < used ? "#F5F0E8" : "rgba(245,240,232,0.12)",
+                transform: i < used ? "scaleY(1.3)" : "scaleY(1)",
+              }}
+            />
+          ))}
         </div>
-
-        {/* Film dots */}
-        <div className="flex gap-2 justify-center flex-wrap mb-2">
-          {dots.map((i) => {
-            const used = i < photosUsed;
-            return (
-              <div
-                key={i}
-                className="film-dot"
-                style={{
-                  borderColor: used ? "var(--pink)" : "rgba(255,255,255,0.2)",
-                  background: used ? "var(--pink)" : "transparent",
-                  color: used ? "white" : "rgba(255,255,255,0.3)",
-                }}
-              >
-                {used ? "✓" : ""}
-              </div>
-            );
-          })}
-        </div>
-        <p className="text-center text-xs opacity-40 mb-8 tracking-widest uppercase">
-          {photosUsed}/{MAX_PHOTOS} frames used
+        <p style={{
+          fontSize: 12, fontWeight: 500, letterSpacing: "0.08em",
+          color: low ? "#E8845A" : "rgba(245,240,232,0.3)",
+          textTransform: "uppercase"
+        }}>
+          {left} {low ? "left — use wisely" : `of ${MAX_PHOTOS} remaining`}
         </p>
       </div>
 
-      {/* Center message */}
-      <div className="text-center slide-up-1">
-        <p className="text-5xl mb-4 float">🤳</p>
-        <p className="font-semibold text-xl mb-2">Capture the moment!</p>
-        <p className="text-sm opacity-50">
-          Something silly, sweet, or spontaneous 🥂
+      {/* Middle text */}
+      <div className="animate-fade-2" style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", textAlign: "center", gap: 12 }}>
+        <p className="serif" style={{ fontSize: 32, lineHeight: 1.25, color: "#F5F0E8", fontStyle: "italic" }}>
+          Capture the<br />moment.
+        </p>
+        <p style={{ fontSize: 14, color: "rgba(245,240,232,0.35)", lineHeight: 1.6, maxWidth: 220 }}>
+          You have {MAX_PHOTOS} shots. Like a disposable camera — make every one count.
         </p>
         {error && (
-          <p className="mt-4 text-sm py-2 px-4 rounded-lg" style={{ color: "var(--coral)", background: "rgba(255,139,100,0.1)" }}>
-            {error}
-          </p>
+          <p style={{ fontSize: 13, color: "#E8845A", marginTop: 8 }}>{error}</p>
         )}
       </div>
 
-      {/* Camera button */}
-      <label htmlFor="camera-input" className="camera-btn" aria-label="Take photo" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
-          <circle cx="12" cy="13" r="4"/>
-        </svg>
-      </label>
-      <p className="text-xs opacity-30 tracking-widest uppercase">tap to capture</p>
+      {/* Shutter — label directly wired to input, no JS needed */}
+      <div className="animate-fade-3" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, paddingBottom: "max(env(safe-area-inset-bottom, 0px) + 40px, 52px)" }}>
+        <div className="shutter-wrap">
+          <div className="shutter-ring" />
+          <label htmlFor="photo-input" className="shutter-btn" aria-label="Take or choose a photo">
+            <div className="shutter-inner">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#F5F0E8" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                <circle cx="12" cy="13" r="4"/>
+              </svg>
+            </div>
+          </label>
+        </div>
+        <p style={{ fontSize: 11, letterSpacing: "0.15em", textTransform: "uppercase", color: "rgba(245,240,232,0.2)" }}>
+          tap to capture
+        </p>
+      </div>
+
     </div>
   );
 }
 
-/* ─── PREVIEW ─── */
-function PreviewScreen({
-  preview,
-  onConfirm,
-  onRetake,
-  photosLeft,
-}: {
-  preview: string;
-  onConfirm: () => void;
-  onRetake: () => void;
-  photosLeft: number;
+/* ══════════════════════════════════════════
+   PREVIEW SCREEN
+══════════════════════════════════════════ */
+function PreviewScreen({ preview, left, onSend, onRetake, error }: {
+  preview: string; left: number; onSend: () => void; onRetake: () => void; error: string;
 }) {
   return (
-    <div className="flex flex-col min-h-screen">
-      {/* Photo preview fills top */}
-      <div className="relative flex-1">
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: "100vh" }}>
+      {/* Full photo */}
+      <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={preview} alt="Preview" className="w-full h-full object-cover" style={{ maxHeight: "65vh" }} />
-        <div className="absolute inset-0" style={{ background: "linear-gradient(to bottom, transparent 60%, var(--dark))" }} />
-        <div className="absolute top-4 left-4">
-          <span
-            className="text-xs px-3 py-1.5 rounded-full font-semibold"
-            style={{ background: "rgba(0,0,0,0.6)", color: "var(--yellow)" }}
-          >
-            {photosLeft - 1} shots left after this
+        <img src={preview} alt="Preview" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, rgba(13,13,13,0.3) 0%, transparent 30%, transparent 55%, rgba(13,13,13,0.95) 100%)" }} />
+        <div style={{ position: "absolute", top: "env(safe-area-inset-top, 20px)", left: 20, marginTop: 16 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, padding: "5px 12px", borderRadius: 100, background: "rgba(13,13,13,0.65)", backdropFilter: "blur(8px)", color: "rgba(245,240,232,0.7)", letterSpacing: "0.06em" }}>
+            {left - 1} shots left after this
           </span>
         </div>
       </div>
 
       {/* Actions */}
-      <div className="px-6 py-8 flex flex-col gap-4 slide-up">
-        <p className="text-center font-semibold text-lg">Looking good? 👀</p>
-        <button
-          onClick={onConfirm}
-          className="w-full py-5 rounded-2xl font-semibold text-lg text-white"
-          style={{ background: "linear-gradient(135deg, var(--pink), var(--coral))" }}
-        >
-          Use this shot! 📸
-        </button>
-        <button
-          onClick={onRetake}
-          className="w-full py-4 rounded-2xl font-semibold text-base opacity-60"
-          style={{ border: "1.5px solid rgba(255,255,255,0.2)", color: "white" }}
-        >
-          Retake
-        </button>
+      <div className="animate-slide" style={{ padding: "28px 24px", paddingBottom: "max(env(safe-area-inset-bottom, 0px) + 28px, 40px)", display: "flex", flexDirection: "column", gap: 12 }}>
+        <p className="serif" style={{ textAlign: "center", fontSize: 22, fontStyle: "italic", marginBottom: 4 }}>Use this shot?</p>
+        {error && <p style={{ textAlign: "center", fontSize: 13, color: "#E8845A" }}>{error}</p>}
+        <button className="btn-primary" onClick={onSend}>Save it ✓</button>
+        <button className="btn-ghost" onClick={onRetake}>Retake</button>
       </div>
     </div>
   );
 }
 
-/* ─── UPLOADING ─── */
-function UploadingScreen() {
+/* ══════════════════════════════════════════
+   UPLOADING
+══════════════════════════════════════════ */
+function UploadScreen() {
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen gap-6">
-      <div className="text-6xl" style={{ animation: "spin-slow 2s linear infinite" }}>⚙️</div>
-      <p className="font-fun text-2xl" style={{ color: "var(--pink)" }}>Developing…</p>
-      <p className="text-sm opacity-50">Your photo is being saved!</p>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20, minHeight: "100vh" }}>
+      <div className="spinner" />
+      <p className="serif" style={{ fontSize: 22, fontStyle: "italic", color: "rgba(245,240,232,0.6)" }}>Saving…</p>
     </div>
   );
 }
 
-/* ─── SUCCESS ─── */
-function SuccessScreen({ photosLeft, onNext }: { photosLeft: number; onNext: () => void }) {
+/* ══════════════════════════════════════════
+   SUCCESS
+══════════════════════════════════════════ */
+function SuccessScreen({ left, onAnother }: { left: number; onAnother: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-between min-h-screen px-6 py-16 text-center">
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "space-between", padding: "0 24px", minHeight: "100vh", textAlign: "center" }}>
       <div />
-      <div className="pop">
-        <p className="text-7xl mb-6">🎉</p>
-        <h2 className="font-fun text-3xl mb-3" style={{ color: "var(--mint)" }}>
-          Shot saved!
-        </h2>
-        <p className="opacity-60 mb-2">It&apos;s in the gallery now 🖼️</p>
-        <p className="font-fun text-lg" style={{ color: "var(--yellow)" }}>
-          {photosLeft} frame{photosLeft !== 1 ? "s" : ""} left
-        </p>
+      <div className="animate-scale" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+        <div style={{ width: 72, height: 72, borderRadius: "50%", background: "#1A1A1A", border: "1px solid rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 8 }}>
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#F5F0E8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+        </div>
+        <p className="serif" style={{ fontSize: 30, lineHeight: 1.2 }}>Saved!</p>
+        <p style={{ fontSize: 14, color: "rgba(245,240,232,0.4)" }}>It's in the gallery now.</p>
+        <div className="card" style={{ marginTop: 16, padding: "14px 28px" }}>
+          <p style={{ fontSize: 13, color: "rgba(245,240,232,0.35)", marginBottom: 2 }}>Remaining</p>
+          <p style={{ fontSize: 28, fontWeight: 600 }}>{left} <span style={{ fontSize: 14, fontWeight: 400, color: "rgba(245,240,232,0.4)" }}>of {MAX_PHOTOS}</span></p>
+        </div>
       </div>
-
-      <div className="w-full flex flex-col gap-4">
-        <button
-          onClick={onNext}
-          className="w-full py-5 rounded-2xl font-semibold text-lg text-white"
-          style={{ background: "linear-gradient(135deg, var(--pink), var(--coral))" }}
-        >
-          Take Another! 📸
-        </button>
-        <Link
-          href="/gallery"
-          className="block w-full py-4 rounded-2xl font-semibold text-center opacity-60"
-          style={{ border: "1.5px solid rgba(255,255,255,0.2)", color: "white" }}
-        >
-          See Gallery
+      <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 12, paddingBottom: "max(env(safe-area-inset-bottom, 0px) + 28px, 40px)" }}>
+        <button className="btn-primary" onClick={onAnother}>Take another</button>
+        <Link href="/gallery" style={{ display: "block", textDecoration: "none" }}>
+          <button className="btn-ghost" style={{ width: "100%" }}>View gallery</button>
         </Link>
       </div>
     </div>
   );
 }
 
-/* ─── DONE ─── */
+/* ══════════════════════════════════════════
+   DONE — all 10 used
+══════════════════════════════════════════ */
 function DoneScreen() {
   return (
-    <div className="flex flex-col items-center justify-between min-h-screen px-6 py-16 text-center">
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "space-between", padding: "0 24px", minHeight: "100vh", textAlign: "center" }}>
       <div />
-      <div className="pop">
-        <p className="text-7xl mb-6">🎞️</p>
-        <h2 className="font-fun text-3xl mb-4" style={{ color: "var(--yellow)" }}>
-          Roll&apos;s finished!
-        </h2>
-        <p className="opacity-70 text-base leading-relaxed mb-4">
-          You&apos;ve used all 10 frames.<br />
-          Thanks for capturing the magic! ✨
+      <div className="animate-scale" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
+        <div className="film-strip" style={{ marginBottom: 8 }}>
+          {Array.from({ length: MAX_PHOTOS }).map((_, i) => (
+            <div key={i} className="film-frame-dot" style={{ background: "#F5F0E8", transform: "scaleY(1.3)" }} />
+          ))}
+        </div>
+        <p className="serif" style={{ fontSize: 32, lineHeight: 1.2, fontStyle: "italic" }}>Roll complete.</p>
+        <p style={{ fontSize: 15, color: "rgba(245,240,232,0.4)", lineHeight: 1.7, maxWidth: 240 }}>
+          You've used all {MAX_PHOTOS} frames. Thank you for capturing our day.
         </p>
-        <p className="font-fun text-lg" style={{ color: "var(--pink)" }}>
-          Sara & Ahmed 💍
-        </p>
+        <p className="serif" style={{ fontSize: 18, marginTop: 8 }}>Sara & Ahmed 💍</p>
       </div>
-      <Link
-        href="/gallery"
-        className="block w-full max-w-xs py-5 rounded-2xl font-semibold text-lg text-white text-center"
-        style={{ background: "linear-gradient(135deg, var(--purple), var(--sky))" }}
-      >
-        See All Photos 🖼️
+      <Link href="/gallery" style={{ display: "block", width: "100%", textDecoration: "none", paddingBottom: "max(env(safe-area-inset-bottom, 0px) + 28px, 40px)" }}>
+        <button className="btn-primary">See all the moments →</button>
       </Link>
     </div>
   );
