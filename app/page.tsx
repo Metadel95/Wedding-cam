@@ -4,335 +4,396 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import Link from "next/link";
 
 const MAX_PHOTOS = 10;
-const STORAGE_KEY = "wedding_photos_used";
+const STORAGE_KEY = "wedding_photos_used_v2";
 
 function getPhotosUsed(): number {
   if (typeof window === "undefined") return 0;
   return parseInt(localStorage.getItem(STORAGE_KEY) || "0", 10);
 }
 
-function setPhotosUsed(n: number) {
-  localStorage.setItem(STORAGE_KEY, String(n));
-}
-
-type UploadState = "idle" | "uploading" | "success" | "error";
+type Stage = "welcome" | "camera" | "preview" | "uploading" | "success" | "done";
 
 export default function Home() {
   const [photosUsed, setPhotosUsedState] = useState(0);
-  const [uploadState, setUploadState] = useState<UploadState>("idle");
+  const [stage, setStage] = useState<Stage>("welcome");
   const [preview, setPreview] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
+  const [showFlash, setShowFlash] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    setPhotosUsedState(getPhotosUsed());
+    const used = getPhotosUsed();
+    setPhotosUsedState(used);
+    if (used >= MAX_PHOTOS) setStage("done");
   }, []);
 
   const photosLeft = MAX_PHOTOS - photosUsed;
-  const isExhausted = photosLeft <= 0;
+
+  const triggerCamera = () => {
+    setErrorMsg("");
+    fileInputRef.current?.click();
+  };
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      setErrorMsg("Please select an image file.");
-      return;
-    }
     setErrorMsg("");
     setSelectedFile(file);
     const reader = new FileReader();
-    reader.onload = (ev) => setPreview(ev.target?.result as string);
+    reader.onload = (ev) => {
+      setPreview(ev.target?.result as string);
+      setStage("preview");
+    };
     reader.readAsDataURL(file);
+    // reset so same file can be reselected
+    e.target.value = "";
   }, []);
 
   const handleUpload = async () => {
-    if (!selectedFile || isExhausted) return;
-    setUploadState("uploading");
+    if (!selectedFile) return;
+    setStage("uploading");
     setErrorMsg("");
 
     try {
       const formData = new FormData();
       formData.append("file", selectedFile);
 
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-
+      const res = await fetch("/api/upload", { method: "POST", body: formData });
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || "Upload failed");
       }
 
       const newCount = photosUsed + 1;
-      setPhotosUsed(newCount);
+      localStorage.setItem(STORAGE_KEY, String(newCount));
       setPhotosUsedState(newCount);
-      setUploadState("success");
+
+      // Flash effect
+      setShowFlash(true);
+      setTimeout(() => setShowFlash(false), 600);
+
+      if (newCount >= MAX_PHOTOS) {
+        setTimeout(() => setStage("done"), 700);
+      } else {
+        setStage("success");
+      }
       setPreview(null);
       setSelectedFile(null);
-      if (fileInputRef.current) fileInputRef.current.value = "";
     } catch (err: unknown) {
-      setUploadState("error");
-      setErrorMsg(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setErrorMsg(err instanceof Error ? err.message : "Something went wrong!");
+      setStage("preview");
     }
   };
 
-  const handleCancel = () => {
+  const handleRetake = () => {
     setPreview(null);
     setSelectedFile(null);
-    setUploadState("idle");
-    setErrorMsg("");
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  };
-
-  const handleTakeAnother = () => {
-    setUploadState("idle");
-    setPreview(null);
-    setSelectedFile(null);
+    setStage("camera");
     setErrorMsg("");
   };
 
-  const filmStrip = Array.from({ length: MAX_PHOTOS }, (_, i) => i < photosUsed);
+  const handleNext = () => {
+    setStage("camera");
+    setErrorMsg("");
+  };
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center px-6 py-16">
-      {/* Header */}
-      <div className="text-center mb-10 fade-up">
-        <p className="font-display italic text-sm tracking-[0.3em] text-[var(--mid)] mb-3 uppercase">
-          You are cordially invited
-        </p>
-        <h1 className="font-display text-5xl md:text-6xl font-light text-[var(--dark)] leading-tight">
-          Sara & Ahmed
-        </h1>
-        <div className="gold-divider my-5" />
-        <p className="font-display italic text-xl text-[var(--mid)]">
-          June 14, 2026
-        </p>
-      </div>
+    <div className="relative min-h-screen flex flex-col" style={{ position: "relative", zIndex: 1 }}>
+      {showFlash && <div className="flash-overlay" />}
 
-      {/* Film strip counter */}
-      <div className="fade-up-delay-1 mb-10 flex flex-col items-center gap-4">
-        <div className="flex gap-1.5">
-          {filmStrip.map((used, i) => (
-            <div
-              key={i}
-              className="w-6 h-8 border transition-all duration-500"
-              style={{
-                borderColor: used ? "var(--gold)" : "var(--mid)",
-                backgroundColor: used ? "var(--gold)" : "transparent",
-                opacity: used ? 1 : 0.4,
-              }}
-            />
-          ))}
-        </div>
-        <p className="text-xs tracking-[0.25em] uppercase text-[var(--mid)]">
-          {isExhausted
-            ? "All frames used"
-            : `${photosLeft} frame${photosLeft !== 1 ? "s" : ""} remaining`}
-        </p>
-      </div>
-
-      {/* Main card */}
-      <div className="fade-up-delay-2 w-full max-w-md">
-        {isExhausted ? (
-          <ExhaustedState />
-        ) : uploadState === "success" ? (
-          <SuccessState photosLeft={MAX_PHOTOS - photosUsed} onTakeAnother={handleTakeAnother} />
-        ) : preview ? (
-          <PreviewState
-            preview={preview}
-            uploading={uploadState === "uploading"}
-            error={errorMsg}
-            onUpload={handleUpload}
-            onCancel={handleCancel}
-          />
-        ) : (
-          <IdleState
-            photosLeft={photosLeft}
-            onSelect={() => fileInputRef.current?.click()}
-            isFirstPhoto={photosUsed === 0}
-          />
-        )}
-      </div>
-
-      {/* Hidden file input */}
-      {/* @ts-ignore -- JSX.IntrinsicElements error in some TS configs; suppress for file input */}
+      {/* Hidden file input — NO capture attribute for max compatibility */}
       <input
         ref={fileInputRef}
         type="file"
         accept="image/*"
-        capture="environment"
         className="hidden"
+        style={{ position: "absolute", opacity: 0, width: 0, height: 0 }}
         onChange={handleFileChange}
       />
 
-      {/* Gallery link */}
-      <div className="fade-up-delay-4 mt-12 text-center">
-        <div className="gold-divider mb-6" />
-        <Link
-          href="/gallery"
-          className="font-display italic text-[var(--mid)] hover:text-[var(--dark)] transition-colors text-sm tracking-widest"
-        >
-          View the Gallery →
-        </Link>
-      </div>
-    </main>
+      {stage === "welcome" && <WelcomeScreen onStart={() => setStage("camera")} />}
+      {stage === "camera" && (
+        <CameraScreen
+          photosLeft={photosLeft}
+          photosUsed={photosUsed}
+          onCapture={triggerCamera}
+          error={errorMsg}
+        />
+      )}
+      {stage === "preview" && preview && (
+        <PreviewScreen
+          preview={preview}
+          onConfirm={handleUpload}
+          onRetake={handleRetake}
+          photosLeft={photosLeft}
+        />
+      )}
+      {stage === "uploading" && (
+        <UploadingScreen />
+      )}
+      {stage === "success" && (
+        <SuccessScreen
+          photosLeft={photosLeft}
+          onNext={handleNext}
+        />
+      )}
+      {stage === "done" && <DoneScreen />}
+    </div>
   );
 }
 
-function IdleState({
-  photosLeft,
-  onSelect,
-  isFirstPhoto,
-}: {
-  photosLeft: number;
-  onSelect: () => void;
-  isFirstPhoto: boolean;
-}) {
+/* ─── WELCOME ─── */
+function WelcomeScreen({ onStart }: { onStart: () => void }) {
   return (
-    <div className="text-center">
-      {isFirstPhoto && (
-        <div className="mb-8 px-6 py-6 border border-[var(--gold)] border-opacity-40 bg-[var(--warm-white)]">
-          <p className="font-display italic text-2xl text-[var(--dark)] leading-relaxed mb-3">
-            "You have only {photosLeft} photos."
-          </p>
-          <p className="font-display italic text-lg text-[var(--mid)] leading-relaxed">
-            Use them wisely.
-          </p>
-          <div className="gold-divider mt-4" />
-          <p className="text-xs tracking-[0.2em] uppercase text-[var(--mid)] mt-4">
-            Like a disposable camera — every frame counts.
+    <div className="flex flex-col items-center justify-between min-h-screen px-6 py-12 text-center">
+      <div />
+      <div className="slide-up">
+        {/* Floating emojis */}
+        <div className="relative mb-8">
+          <span className="text-6xl block float">📸</span>
+          <span className="absolute -top-2 -right-6 text-3xl float-delay">💍</span>
+          <span className="absolute -bottom-2 -left-8 text-2xl float">🌸</span>
+        </div>
+
+        <h1 className="font-fun text-4xl mb-2" style={{ color: "var(--pink)" }}>
+          Sara & Ahmed
+        </h1>
+        <p className="text-lg mb-1" style={{ color: "var(--yellow)" }}>are getting married! 🎊</p>
+        <p className="text-sm opacity-60 mb-10">June 14, 2026</p>
+
+        <div
+          className="rounded-2xl p-5 mb-10"
+          style={{ background: "var(--card)", border: "1px solid rgba(255,255,255,0.08)" }}
+        >
+          <p className="text-3xl mb-3">🎞️</p>
+          <p className="font-semibold text-lg mb-2">You get</p>
+          <p className="font-fun text-5xl mb-2" style={{ color: "var(--yellow)" }}>10 shots</p>
+          <p className="opacity-60 text-sm leading-relaxed">
+            Like a disposable camera.<br />Use them wisely. Make them count!
           </p>
         </div>
-      )}
-
-      <label
-        htmlFor="camera-input"
-        className="group relative w-full py-5 px-8 border border-[var(--dark)] bg-transparent hover:bg-[var(--dark)] transition-all duration-500 text-[var(--dark)] hover:text-[var(--cream)] tracking-[0.2em] uppercase text-sm font-light cursor-pointer block"
-      >
-        {isFirstPhoto ? "Take Your First Photo" : "Take a Photo"}
-      </label>
-
-      {!isFirstPhoto && (
-        <p className="mt-4 text-xs tracking-widest text-[var(--mid)] uppercase">
-          {photosLeft} frames left
-        </p>
-      )}
-    </div>
-  );
-}
-
-      <button
-        onClick={onSelect}
-        className="group relative w-full py-5 px-8 border border-[var(--dark)] bg-transparent hover:bg-[var(--dark)] transition-all duration-500 text-[var(--dark)] hover:text-[var(--cream)] tracking-[0.2em] uppercase text-sm font-light"
-      >
-        <span className="relative z-10">
-          {isFirstPhoto ? "Take Your First Photo" : "Take a Photo"}
-        </span>
-      </button>
-
-      {!isFirstPhoto && (
-        <p className="mt-4 text-xs tracking-widest text-[var(--mid)] uppercase">
-          {photosLeft} frames left
-        </p>
-      )}
-    </div>
-  );
-}
-
-function PreviewState({
-  preview,
-  uploading,
-  error,
-  onUpload,
-  onCancel,
-}: {
-  preview: string;
-  uploading: boolean;
-  error: string;
-  onUpload: () => void;
-  onCancel: () => void;
-}) {
-  return (
-    <div className="flex flex-col gap-5">
-      <div className="film-frame">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={preview}
-          alt="Preview"
-          className="w-full aspect-square object-cover block"
-        />
       </div>
 
-      {error && (
-        <p className="text-center text-xs text-red-500 tracking-wide">{error}</p>
-      )}
-
       <button
-        onClick={onUpload}
-        disabled={uploading}
-        className="w-full py-4 px-8 bg-[var(--dark)] text-[var(--cream)] tracking-[0.2em] uppercase text-sm font-light disabled:opacity-50 transition-opacity"
+        onClick={onStart}
+        className="slide-up-3 w-full max-w-xs py-5 rounded-2xl font-semibold text-lg text-white"
+        style={{ background: "linear-gradient(135deg, var(--pink), var(--coral))" }}
       >
-        {uploading ? "Developing…" : "Use This Frame"}
-      </button>
-      <button
-        onClick={onCancel}
-        disabled={uploading}
-        className="w-full py-3 px-8 border border-[var(--mid)] text-[var(--mid)] tracking-[0.2em] uppercase text-xs font-light hover:border-[var(--dark)] hover:text-[var(--dark)] transition-colors disabled:opacity-30"
-      >
-        Retake
+        Let&apos;s Go! 🎉
       </button>
     </div>
   );
 }
 
-function SuccessState({
+/* ─── CAMERA ─── */
+function CameraScreen({
   photosLeft,
-  onTakeAnother,
+  photosUsed,
+  onCapture,
+  error,
 }: {
   photosLeft: number;
-  onTakeAnother: () => void;
+  photosUsed: number;
+  onCapture: () => void;
+  error: string;
 }) {
+  const dots = Array.from({ length: MAX_PHOTOS }, (_, i) => i);
+
   return (
-    <div className="text-center py-6">
-      <div className="text-4xl mb-5">✦</div>
-      <p className="font-display italic text-2xl text-[var(--dark)] mb-2">
-        Captured.
-      </p>
-      <p className="text-sm tracking-widest text-[var(--mid)] uppercase mb-8">
-        {photosLeft > 0
-          ? `${photosLeft} frame${photosLeft !== 1 ? "s" : ""} remaining`
-          : "All frames used"}
-      </p>
-      {photosLeft > 0 && (
+    <div className="flex flex-col items-center justify-between min-h-screen px-6 py-10">
+      {/* Top bar */}
+      <div className="w-full slide-up">
+        <div className="flex justify-between items-center mb-6">
+          <Link href="/gallery" className="text-xs opacity-50 tracking-widest uppercase">
+            Gallery →
+          </Link>
+          <span
+            className="font-fun text-base"
+            style={{ color: photosLeft <= 3 ? "var(--coral)" : "var(--yellow)" }}
+          >
+            {photosLeft} left
+          </span>
+        </div>
+
+        {/* Film dots */}
+        <div className="flex gap-2 justify-center flex-wrap mb-2">
+          {dots.map((i) => {
+            const used = i < photosUsed;
+            return (
+              <div
+                key={i}
+                className="film-dot"
+                style={{
+                  borderColor: used ? "var(--pink)" : "rgba(255,255,255,0.2)",
+                  background: used ? "var(--pink)" : "transparent",
+                  color: used ? "white" : "rgba(255,255,255,0.3)",
+                }}
+              >
+                {used ? "✓" : ""}
+              </div>
+            );
+          })}
+        </div>
+        <p className="text-center text-xs opacity-40 mb-8 tracking-widest uppercase">
+          {photosUsed}/{MAX_PHOTOS} frames used
+        </p>
+      </div>
+
+      {/* Center message */}
+      <div className="text-center slide-up-1">
+        <p className="text-5xl mb-4 float">🤳</p>
+        <p className="font-semibold text-xl mb-2">Capture the moment!</p>
+        <p className="text-sm opacity-50">
+          Something silly, sweet, or spontaneous 🥂
+        </p>
+        {error && (
+          <p className="mt-4 text-sm py-2 px-4 rounded-lg" style={{ color: "var(--coral)", background: "rgba(255,139,100,0.1)" }}>
+            {error}
+          </p>
+        )}
+      </div>
+
+      {/* Camera button */}
+      <div className="flex flex-col items-center gap-5 slide-up-2">
         <button
-          onClick={onTakeAnother}
-          className="w-full py-4 px-8 border border-[var(--dark)] text-[var(--dark)] tracking-[0.2em] uppercase text-sm font-light hover:bg-[var(--dark)] hover:text-[var(--cream)] transition-all duration-500"
+          onClick={onCapture}
+          className="camera-btn"
+          aria-label="Take photo"
         >
-          Take Another
+          <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+            <circle cx="12" cy="13" r="4"/>
+          </svg>
         </button>
-      )}
+        <p className="text-xs opacity-30 tracking-widest uppercase">tap to capture</p>
+      </div>
     </div>
   );
 }
 
-function ExhaustedState() {
+/* ─── PREVIEW ─── */
+function PreviewScreen({
+  preview,
+  onConfirm,
+  onRetake,
+  photosLeft,
+}: {
+  preview: string;
+  onConfirm: () => void;
+  onRetake: () => void;
+  photosLeft: number;
+}) {
   return (
-    <div className="text-center px-6 py-10 border border-[var(--gold)] border-opacity-40 bg-[var(--warm-white)]">
-      <div className="text-3xl mb-5">✦</div>
-      <p className="font-display italic text-2xl text-[var(--dark)] leading-relaxed mb-3">
-        Your roll is finished.
-      </p>
-      <p className="font-display italic text-[var(--mid)] leading-relaxed">
-        Thank you for capturing these moments with us.
-      </p>
-      <div className="gold-divider mt-6 mb-6" />
+    <div className="flex flex-col min-h-screen">
+      {/* Photo preview fills top */}
+      <div className="relative flex-1">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={preview} alt="Preview" className="w-full h-full object-cover" style={{ maxHeight: "65vh" }} />
+        <div className="absolute inset-0" style={{ background: "linear-gradient(to bottom, transparent 60%, var(--dark))" }} />
+        <div className="absolute top-4 left-4">
+          <span
+            className="text-xs px-3 py-1.5 rounded-full font-semibold"
+            style={{ background: "rgba(0,0,0,0.6)", color: "var(--yellow)" }}
+          >
+            {photosLeft - 1} shots left after this
+          </span>
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="px-6 py-8 flex flex-col gap-4 slide-up">
+        <p className="text-center font-semibold text-lg">Looking good? 👀</p>
+        <button
+          onClick={onConfirm}
+          className="w-full py-5 rounded-2xl font-semibold text-lg text-white"
+          style={{ background: "linear-gradient(135deg, var(--pink), var(--coral))" }}
+        >
+          Use this shot! 📸
+        </button>
+        <button
+          onClick={onRetake}
+          className="w-full py-4 rounded-2xl font-semibold text-base opacity-60"
+          style={{ border: "1.5px solid rgba(255,255,255,0.2)", color: "white" }}
+        >
+          Retake
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ─── UPLOADING ─── */
+function UploadingScreen() {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen gap-6">
+      <div className="text-6xl" style={{ animation: "spin-slow 2s linear infinite" }}>⚙️</div>
+      <p className="font-fun text-2xl" style={{ color: "var(--pink)" }}>Developing…</p>
+      <p className="text-sm opacity-50">Your photo is being saved!</p>
+    </div>
+  );
+}
+
+/* ─── SUCCESS ─── */
+function SuccessScreen({ photosLeft, onNext }: { photosLeft: number; onNext: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-between min-h-screen px-6 py-16 text-center">
+      <div />
+      <div className="pop">
+        <p className="text-7xl mb-6">🎉</p>
+        <h2 className="font-fun text-3xl mb-3" style={{ color: "var(--mint)" }}>
+          Shot saved!
+        </h2>
+        <p className="opacity-60 mb-2">It&apos;s in the gallery now 🖼️</p>
+        <p className="font-fun text-lg" style={{ color: "var(--yellow)" }}>
+          {photosLeft} frame{photosLeft !== 1 ? "s" : ""} left
+        </p>
+      </div>
+
+      <div className="w-full flex flex-col gap-4">
+        <button
+          onClick={onNext}
+          className="w-full py-5 rounded-2xl font-semibold text-lg text-white"
+          style={{ background: "linear-gradient(135deg, var(--pink), var(--coral))" }}
+        >
+          Take Another! 📸
+        </button>
+        <Link
+          href="/gallery"
+          className="block w-full py-4 rounded-2xl font-semibold text-center opacity-60"
+          style={{ border: "1.5px solid rgba(255,255,255,0.2)", color: "white" }}
+        >
+          See Gallery
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+/* ─── DONE ─── */
+function DoneScreen() {
+  return (
+    <div className="flex flex-col items-center justify-between min-h-screen px-6 py-16 text-center">
+      <div />
+      <div className="pop">
+        <p className="text-7xl mb-6">🎞️</p>
+        <h2 className="font-fun text-3xl mb-4" style={{ color: "var(--yellow)" }}>
+          Roll&apos;s finished!
+        </h2>
+        <p className="opacity-70 text-base leading-relaxed mb-4">
+          You&apos;ve used all 10 frames.<br />
+          Thanks for capturing the magic! ✨
+        </p>
+        <p className="font-fun text-lg" style={{ color: "var(--pink)" }}>
+          Sara & Ahmed 💍
+        </p>
+      </div>
       <Link
         href="/gallery"
-        className="inline-block border border-[var(--dark)] text-[var(--dark)] py-3 px-8 tracking-[0.2em] uppercase text-sm font-light hover:bg-[var(--dark)] hover:text-[var(--cream)] transition-all duration-500"
+        className="block w-full max-w-xs py-5 rounded-2xl font-semibold text-lg text-white text-center"
+        style={{ background: "linear-gradient(135deg, var(--purple), var(--sky))" }}
       >
-        View the Gallery
+        See All Photos 🖼️
       </Link>
     </div>
   );

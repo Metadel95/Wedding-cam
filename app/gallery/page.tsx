@@ -7,8 +7,6 @@ interface Photo {
   url: string;
   publicId: string;
   createdAt: string;
-  width: number;
-  height: number;
 }
 
 export default function Gallery() {
@@ -29,83 +27,97 @@ export default function Gallery() {
   }, []);
 
   return (
-    <main className="min-h-screen px-6 py-16 max-w-5xl mx-auto">
+    <div className="min-h-screen pb-20" style={{ position: "relative", zIndex: 1 }}>
       {/* Header */}
-      <div className="text-center mb-14 fade-up">
-        <Link
-          href="/"
-          className="text-xs tracking-[0.3em] uppercase text-[var(--mid)] hover:text-[var(--dark)] transition-colors block mb-8"
-        >
-          ← Back to Camera
-        </Link>
-        <h1 className="font-display text-5xl font-light text-[var(--dark)] mb-4">
-          The Gallery
-        </h1>
-        <div className="gold-divider mb-4" />
-        <p className="font-display italic text-[var(--mid)] text-lg">
-          Sara & Ahmed — June 14, 2026
-        </p>
+      <div
+        className="sticky top-0 z-10 px-5 py-4 flex items-center justify-between"
+        style={{ background: "rgba(26,16,37,0.95)", backdropFilter: "blur(12px)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}
+      >
+        <Link href="/" className="text-sm opacity-50">← Camera</Link>
+        <span className="font-fun text-lg" style={{ color: "var(--pink)" }}>Gallery 🖼️</span>
+        <span className="text-sm opacity-40">{photos.length} shots</span>
       </div>
 
-      {loading && (
-        <div className="text-center py-20 fade-up">
-          <p className="font-display italic text-2xl text-[var(--mid)]">
-            Developing your film…
-          </p>
-        </div>
-      )}
-
-      {error && (
-        <div className="text-center py-20">
-          <p className="text-[var(--mid)] text-sm tracking-wide">{error}</p>
-        </div>
-      )}
-
-      {!loading && !error && photos.length === 0 && (
-        <div className="text-center py-20 fade-up">
-          <p className="font-display italic text-2xl text-[var(--mid)] mb-4">
-            No photos yet.
-          </p>
-          <p className="text-sm tracking-widest text-[var(--mid)] uppercase">
-            Be the first to capture a moment.
-          </p>
-        </div>
-      )}
-
+      {/* Ticker */}
       {photos.length > 0 && (
-        <div className="columns-2 md:columns-3 gap-3 fade-up">
-          {photos.map((photo) => (
-            <div
-              key={photo.publicId}
-              className="film-frame mb-3 cursor-pointer overflow-hidden group"
-              onClick={() => setLightbox(photo)}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={photo.url}
-                alt="Wedding moment"
-                className="w-full block transition-transform duration-700 group-hover:scale-105"
-                loading="lazy"
-              />
-            </div>
-          ))}
+        <div
+          className="ticker-wrap py-2"
+          style={{ background: "var(--pink)", color: "white", fontSize: 12, fontWeight: 600, letterSpacing: "0.15em" }}
+        >
+          <div className="ticker-inner">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <span key={i}>✦ SARA & AHMED ✦ JUNE 14 2026 ✦ CAPTURED WITH LOVE &nbsp;&nbsp;</span>
+            ))}
+          </div>
         </div>
       )}
 
-      {!loading && photos.length > 0 && (
-        <p className="text-center mt-12 text-xs tracking-[0.3em] uppercase text-[var(--mid)] fade-up">
-          {photos.length} moment{photos.length !== 1 ? "s" : ""} captured
-        </p>
-      )}
+      {/* Content */}
+      <div className="px-3 pt-4">
+        {loading && (
+          <div className="flex flex-col items-center justify-center py-32 gap-4">
+            <p className="text-4xl float">📸</p>
+            <p className="opacity-50 text-sm">Developing photos…</p>
+          </div>
+        )}
+
+        {error && (
+          <div className="text-center py-20">
+            <p className="text-4xl mb-3">😢</p>
+            <p className="opacity-50 text-sm">{error}</p>
+          </div>
+        )}
+
+        {!loading && !error && photos.length === 0 && (
+          <div className="text-center py-32">
+            <p className="text-5xl mb-4">📷</p>
+            <p className="font-semibold text-lg mb-2">No photos yet!</p>
+            <p className="opacity-50 text-sm mb-8">Be the first to capture a moment.</p>
+            <Link
+              href="/"
+              className="inline-block py-4 px-8 rounded-2xl font-semibold text-white"
+              style={{ background: "linear-gradient(135deg, var(--pink), var(--coral))" }}
+            >
+              Take a Photo 📸
+            </Link>
+          </div>
+        )}
+
+        {photos.length > 0 && (
+          <div className="columns-2 gap-2">
+            {photos.map((photo, idx) => (
+              <div
+                key={photo.publicId}
+                className="mb-2 rounded-xl overflow-hidden cursor-pointer"
+                style={{
+                  border: "2px solid rgba(255,255,255,0.06)",
+                  animation: `slideUp 0.4s cubic-bezier(0.34,1.56,0.64,1) ${Math.min(idx * 0.05, 0.4)}s both`
+                }}
+                onClick={() => setLightbox(photo)}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={photo.url}
+                  alt="Wedding moment"
+                  className="w-full block"
+                  loading="lazy"
+                />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Lightbox */}
       {lightbox && (
         <div
-          className="fixed inset-0 bg-[var(--dark)] bg-opacity-95 z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(10,5,20,0.97)" }}
           onClick={() => setLightbox(null)}
         >
           <button
-            className="absolute top-6 right-6 text-[var(--cream)] text-2xl tracking-widest opacity-60 hover:opacity-100 transition-opacity"
+            className="absolute top-5 right-5 text-white opacity-60 text-xl w-10 h-10 flex items-center justify-center rounded-full"
+            style={{ background: "rgba(255,255,255,0.1)" }}
             onClick={() => setLightbox(null)}
           >
             ✕
@@ -114,11 +126,11 @@ export default function Gallery() {
           <img
             src={lightbox.url}
             alt="Wedding moment"
-            className="max-h-[90vh] max-w-full object-contain"
+            className="max-h-[85vh] max-w-full rounded-2xl object-contain"
             onClick={(e) => e.stopPropagation()}
           />
         </div>
       )}
-    </main>
+    </div>
   );
 }
