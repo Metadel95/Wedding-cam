@@ -26,6 +26,7 @@ export default function Home() {
     const used = getPhotosUsed();
     setPhotosUsedState(used);
     if (used >= MAX_PHOTOS) setStage("done");
+    else setStage("camera");
   }, []);
 
   const photosLeft = MAX_PHOTOS - photosUsed;
