@@ -17,7 +17,8 @@ export default function Home() {
   const [used, setUsed]       = useState(0);
   const [stage, setStage]     = useState<Stage>("camera");
   const [preview, setPreview] = useState<string | null>(null);
-  const [file, setFile]       = useState<File | null>(null);
+  const [b64, setB64]         = useState<string | null>(null); // base64 data URI — never goes stale
+  const [mimeType, setMimeType] = useState<string>("image/jpeg");
   const [error, setError]     = useState("");
   const [flash, setFlash]     = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -30,31 +31,42 @@ export default function Home() {
 
   const left = MAX_PHOTOS - used;
 
-  /* File picked — show preview */
+  /* File picked — convert to base64 immediately, store as string (never goes stale) */
   const onPick = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (!f) return;
     setError("");
-    setFile(f);
+    setMimeType(f.type || "image/jpeg");
     const reader = new FileReader();
     reader.onload = ev => {
-      setPreview(ev.target?.result as string);
+      const dataUrl = ev.target?.result as string;
+      setB64(dataUrl);
+      setPreview(dataUrl);
       setStage("preview");
+      e.target.value = "";
     };
     reader.readAsDataURL(f);
-    e.target.value = "";
   }, []);
 
-  /* Upload */
+  /* Upload — sends base64 string, never stale */
   const onSend = async () => {
-    if (!file) return;
+    if (!b64) {
+      setError("Photo lost — please retake.");
+      setStage("camera");
+      return;
+    }
     setStage("uploading");
     setError("");
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch("/api/upload", { method: "POST", body: fd });
-      if (!res.ok) throw new Error((await res.json()).error || "Upload failed");
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ data: b64, mimeType }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.error || `Server error ${res.status}`);
+      }
 
       const newUsed = used + 1;
       localStorage.setItem(STORAGE_KEY, String(newUsed));
@@ -62,15 +74,15 @@ export default function Home() {
       setFlash(true);
       setTimeout(() => setFlash(false), 600);
       setPreview(null);
-      setFile(null);
+      setB64(null);
       setStage(newUsed >= MAX_PHOTOS ? "done" : "success");
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      setError(err instanceof Error ? err.message : "Upload failed — check your connection");
       setStage("preview");
     }
   };
 
-  const onRetake = () => { setPreview(null); setFile(null); setStage("camera"); setError(""); };
+  const onRetake = () => { setPreview(null); setB64(null); setStage("camera"); setError(""); };
   const onAnother = () => { setStage("camera"); setError(""); };
 
   return (
@@ -84,7 +96,8 @@ export default function Home() {
         type="file"
         accept="image/*"
         onChange={onPick}
-        style={{ display: "none" }}
+        style={{ position: "fixed", bottom: 0, left: 0, width: "1px", height: "1px", opacity: 0 }}
+        tabIndex={-1}
       />
 
       {stage === "camera"   && <CameraScreen   used={used} left={left} error={error} />}
@@ -158,32 +171,16 @@ function CameraScreen({ used, left, error }: { used: number; left: number; error
 
       {/* Shutter — label directly wired to input, no JS needed */}
       <div className="animate-fade-3" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, paddingBottom: "max(env(safe-area-inset-bottom, 0px) + 40px, 52px)" }}>
-        <div className="shutter-wrap" style={{ position: "relative" }}>
+        <div className="shutter-wrap">
           <div className="shutter-ring" />
-          <div className="shutter-btn" style={{ position: "relative", overflow: "hidden" }}>
-            {/* Input sits ON TOP of the button, fully covering it, invisible */}
-            <input
-              type="file"
-              accept="image/*"
-              onChange={onPick}
-              style={{
-                position: "absolute",
-                inset: 0,
-                width: "100%",
-                height: "100%",
-                opacity: 0,
-                cursor: "pointer",
-                fontSize: 0,
-                zIndex: 10,
-              }}
-            />
-            <div className="shutter-inner" style={{ pointerEvents: "none" }}>
+          <label htmlFor="photo-input" className="shutter-btn" aria-label="Take or choose a photo">
+            <div className="shutter-inner">
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#F5F0E8" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
                 <circle cx="12" cy="13" r="4"/>
               </svg>
             </div>
-          </div>
+          </label>
         </div>
         <p style={{ fontSize: 11, letterSpacing: "0.15em", textTransform: "uppercase", color: "rgba(245,240,232,0.2)" }}>
           tap to capture

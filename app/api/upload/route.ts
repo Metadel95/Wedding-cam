@@ -9,28 +9,22 @@ cloudinary.config({
 
 export async function POST(req: NextRequest) {
   try {
-    const formData = await req.formData();
-    const file = formData.get("file") as File;
+    const body = await req.json();
+    const { data, mimeType } = body;
 
-    if (!file) {
-      return NextResponse.json({ error: "No file provided" }, { status: 400 });
+    if (!data || typeof data !== "string") {
+      return NextResponse.json({ error: "No image data provided" }, { status: 400 });
     }
 
-    if (!file.type.startsWith("image/")) {
-      return NextResponse.json({ error: "File must be an image" }, { status: 400 });
-    }
+    // data is already a base64 data URI like "data:image/jpeg;base64,..."
+    const base64 = data.includes(",") ? data : `data:${mimeType || "image/jpeg"};base64,${data}`;
 
-    // Max 10MB
-    if (file.size > 10 * 1024 * 1024) {
+    // Rough size check — base64 is ~33% larger than binary, so 13MB base64 ≈ 10MB image
+    if (base64.length > 14 * 1024 * 1024) {
       return NextResponse.json({ error: "Image too large (max 10MB)" }, { status: 400 });
     }
 
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-    const base64 = buffer.toString("base64");
-    const dataUri = `data:${file.type};base64,${base64}`;
-
-    const result = await cloudinary.uploader.upload(dataUri, {
+    const result = await cloudinary.uploader.upload(base64, {
       folder: "wedding",
       transformation: [{ width: 1600, height: 1600, crop: "limit", quality: "auto:good" }],
     });
@@ -38,6 +32,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ url: result.secure_url, publicId: result.public_id });
   } catch (err: unknown) {
     console.error("Upload error:", err);
-    return NextResponse.json({ error: "Upload failed" }, { status: 500 });
+    const message = err instanceof Error ? err.message : "Upload failed";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
