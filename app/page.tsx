@@ -161,7 +161,6 @@ export default function Home() {
         ref={fileInputRef}
         type="file"
         accept="image/*"
-        capture="environment"
         className="hidden"
         onChange={handleFileChange}
       />
@@ -205,6 +204,22 @@ function IdleState({
           </p>
         </div>
       )}
+
+      <label
+        htmlFor="camera-input"
+        className="group relative w-full py-5 px-8 border border-[var(--dark)] bg-transparent hover:bg-[var(--dark)] transition-all duration-500 text-[var(--dark)] hover:text-[var(--cream)] tracking-[0.2em] uppercase text-sm font-light cursor-pointer block"
+      >
+        {isFirstPhoto ? "Take Your First Photo" : "Take a Photo"}
+      </label>
+
+      {!isFirstPhoto && (
+        <p className="mt-4 text-xs tracking-widest text-[var(--mid)] uppercase">
+          {photosLeft} frames left
+        </p>
+      )}
+    </div>
+  );
+}
 
       <button
         onClick={onSelect}
